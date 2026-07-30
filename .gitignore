@@ -61,3 +61,12 @@ target/
 
 # IPython notebook checkpoints
 .ipynb_checkpoints/
+
+# Generated account reports — contain personal financial data,
+# never commit to this public repo (README documents the layout)
+report/*
+!report/README.md
+!report/scripts/
+report/scripts/*
+!report/scripts/*.py
+!report/scripts/*.sh
