@@ -991,7 +991,9 @@ def gen_drawdown_table(returns, top=10):
 
     df_cum = ep.cum_returns(returns, 1.0)
     drawdown_periods = get_top_drawdowns(returns, top=top)
-    df_drawdowns = pd.DataFrame(index=list(range(top)),
+    # Only index the drawdowns that actually exist; there may be fewer
+    # than `top`, and all-NaN filler rows break the drawdown plots.
+    df_drawdowns = pd.DataFrame(index=list(range(len(drawdown_periods))),
                                 columns=['Net drawdown in %',
                                          'Peak date',
                                          'Valley date',
