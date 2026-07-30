@@ -74,15 +74,17 @@ DURATION_STATS = OrderedDict(
 
 
 def agg_all_long_short(round_trips, col, stats_dict):
+    # Named aggregation (**stats_dict) replaces the nested-renamer dict
+    # syntax that pandas 1.0 removed.
     stats_all = (round_trips
                  .assign(ones=1)
                  .groupby('ones')[col]
-                 .agg(stats_dict)
+                 .agg(**stats_dict)
                  .T
                  .rename(columns={1.0: 'All trades'}))
     stats_long_short = (round_trips
                         .groupby('long')[col]
-                        .agg(stats_dict)
+                        .agg(**stats_dict)
                         .T
                         .rename(columns={False: 'Short trades',
                                          True: 'Long trades'}))
@@ -129,7 +131,7 @@ def _groupby_consecutive(txn, max_delta=pd.Timedelta('8h')):
         t['block_time'] = ((t.dt.sub(t.dt.shift(1))) >
                            max_delta).astype(int).cumsum()
         grouped_price = (t.groupby(['block_dir',
-                                   'block_time'])
+                                   'block_time'])[['amount', 'price']]
                           .apply(vwap))
         grouped_price.name = 'price'
         grouped_rest = t.groupby(['block_dir', 'block_time']).agg({
@@ -293,7 +295,7 @@ def add_closing_transactions(positions, transactions):
         Transactions with closing transactions appended.
     """
 
-    closed_txns = transactions[['symbol', 'amount', 'price']]
+    closed_txns = transactions[['amount', 'price', 'symbol']]
 
     pos_at_end = positions.drop('cash', axis=1).iloc[-1]
     open_pos = pos_at_end.replace(0, np.nan).dropna()
@@ -301,7 +303,7 @@ def add_closing_transactions(positions, transactions):
     # they don't conflict with other round_trips executed at that time.
     end_dt = open_pos.name + pd.Timedelta(seconds=1)
 
-    for sym, ending_val in open_pos.iteritems():
+    for sym, ending_val in open_pos.items():
         txn_sym = transactions[transactions.symbol == sym]
 
         ending_amount = txn_sym.amount.sum()
@@ -314,7 +316,7 @@ def add_closing_transactions(positions, transactions):
         ])
 
         closing_txn = pd.DataFrame(closing_txn, index=[end_dt])
-        closed_txns = closed_txns.append(closing_txn)
+        closed_txns = pd.concat([closed_txns, closing_txn])
 
     closed_txns = closed_txns[closed_txns.amount != 0]
 
@@ -378,7 +380,7 @@ def gen_round_trip_stats(round_trips):
                                           RETURN_STATS)
 
     stats['symbols'] = \
-        round_trips.groupby('symbol')['returns'].agg(RETURN_STATS).T
+        round_trips.groupby('symbol')['returns'].agg(**RETURN_STATS).T
 
     return stats
 

@@ -5,7 +5,7 @@ from pandas import (
     DataFrame,
     date_range
 )
-from pandas.util.testing import (assert_series_equal)
+from pandas.testing import (assert_series_equal)
 
 from pyfolio.txn import (get_turnover,
                          adjust_returns_for_slippage)
@@ -38,7 +38,7 @@ class TransactionsTestCase(TestCase):
         # Test with no transactions
         expected = Series([0.0]*len(dates), index=dates)
         result = get_turnover(positions, transactions)
-        assert_series_equal(result, expected)
+        assert_series_equal(result, expected, check_freq=False)
 
         transactions = DataFrame(data=[[1, 1, 10, 0]]*len(dates) +
                                  [[2, -1, 10, 0]]*len(dates),
@@ -51,7 +51,7 @@ class TransactionsTestCase(TestCase):
         expected = Series([1.0] + [0.8] * (len(dates) - 1), index=dates)
         result = get_turnover(positions, transactions)
 
-        assert_series_equal(result, expected)
+        assert_series_equal(result, expected, check_freq=False)
 
         # Test with denominator = 'portfolio_value'
         result = get_turnover(positions, transactions,
@@ -62,7 +62,7 @@ class TransactionsTestCase(TestCase):
         expected = Series([0.4, 1.0] * (int((len(dates) - 1) / 2) + 1),
                           index=dates)
 
-        assert_series_equal(result, expected)
+        assert_series_equal(result, expected, check_freq=False)
 
     def test_adjust_returns_for_slippage(self):
         dates = date_range(start='2015-01-01', freq='D', periods=20)
@@ -83,4 +83,4 @@ class TransactionsTestCase(TestCase):
         result = adjust_returns_for_slippage(returns, positions,
                                              transactions, slippage_bps)
 
-        assert_series_equal(result, expected)
+        assert_series_equal(result, expected, check_freq=False)

@@ -315,7 +315,7 @@ def plot_holdings(returns, positions, legend_loc='best', ax=None, **kwargs):
 
     positions = positions.copy().drop('cash', axis='columns')
     df_holdings = positions.replace(0, np.nan).count(axis=1)
-    df_holdings_by_month = df_holdings.resample('1M').mean()
+    df_holdings_by_month = df_holdings.resample('1ME').mean()
     df_holdings.plot(color='steelblue', alpha=0.6, lw=0.5, ax=ax, **kwargs)
     df_holdings_by_month.plot(
         color='orangered',
@@ -644,8 +644,9 @@ def show_perf_stats(returns, factor_returns=None, positions=None,
                                             APPROX_BDAYS_PER_MONTH)
         perf_stats = pd.DataFrame(perf_stats_all, columns=['Backtest'])
 
+    perf_stats = perf_stats.astype(object)
     for column in perf_stats.columns:
-        for stat, value in perf_stats[column].iteritems():
+        for stat, value in perf_stats[column].items():
             if stat in STAT_FUNCS_PCT:
                 perf_stats.loc[stat, column] = str(np.round(value * 100,
                                                             3)) + '%'
@@ -1297,27 +1298,39 @@ def plot_return_quantiles(returns, live_start_date=None, ax=None, **kwargs):
     if ax is None:
         ax = plt.gca()
 
+    def to_frequency_frame(daily, weekly, monthly):
+        # Long-form frame; seaborn cannot align the daily DatetimeIndex
+        # with the MultiIndex that aggregate_returns produces.
+        values = [np.asarray(daily), np.asarray(weekly), np.asarray(monthly)]
+        return pd.DataFrame({
+            'Returns': np.concatenate(values),
+            'Frequency': np.repeat(['Daily', 'Weekly', 'Monthly'],
+                                   [len(v) for v in values]),
+        })
+
     is_returns = returns if live_start_date is None \
         else returns.loc[returns.index < live_start_date]
     is_weekly = ep.aggregate_returns(is_returns, 'weekly')
     is_monthly = ep.aggregate_returns(is_returns, 'monthly')
-    sns.boxplot(data=[is_returns, is_weekly, is_monthly],
+    sns.boxplot(x='Frequency', y='Returns', hue='Frequency',
+                data=to_frequency_frame(is_returns, is_weekly, is_monthly),
                 palette=["#4c72B0", "#55A868", "#CCB974"],
-                ax=ax, **kwargs)
+                legend=False, ax=ax, **kwargs)
 
     if live_start_date is not None:
         oos_returns = returns.loc[returns.index >= live_start_date]
         oos_weekly = ep.aggregate_returns(oos_returns, 'weekly')
         oos_monthly = ep.aggregate_returns(oos_returns, 'monthly')
 
-        sns.swarmplot(data=[oos_returns, oos_weekly, oos_monthly], ax=ax,
-                      color="red",
-                      marker="d", **kwargs)
+        sns.swarmplot(x='Frequency', y='Returns',
+                      data=to_frequency_frame(oos_returns, oos_weekly,
+                                              oos_monthly),
+                      ax=ax, color="red", marker="d", **kwargs)
         red_dots = matplotlib.lines.Line2D([], [], color="red", marker="d",
                                            label="Out-of-sample data",
                                            linestyle='')
         ax.legend(handles=[red_dots], frameon=True, framealpha=0.5)
-    ax.set_xticklabels(['Daily', 'Weekly', 'Monthly'])
+    ax.set_xlabel('')
     ax.set_title('Return quantiles')
 
     return ax
@@ -1368,7 +1381,7 @@ def plot_turnover(returns, transactions, positions, turnover_denom='AGB',
     ax.yaxis.set_major_formatter(FuncFormatter(y_axis_formatter))
 
     df_turnover = txn.get_turnover(positions, transactions, turnover_denom)
-    df_turnover_by_month = df_turnover.resample("M").mean()
+    df_turnover_by_month = df_turnover.resample("ME").mean()
     df_turnover.plot(color='steelblue', alpha=1.0, lw=0.5, ax=ax, **kwargs)
     df_turnover_by_month.plot(
         color='orangered',
@@ -1550,7 +1563,7 @@ def plot_daily_turnover_hist(transactions, positions, turnover_denom='AGB',
     if ax is None:
         ax = plt.gca()
     turnover = txn.get_turnover(positions, transactions, turnover_denom)
-    sns.distplot(turnover, ax=ax, **kwargs)
+    sns.histplot(turnover, kde=True, stat='density', ax=ax, **kwargs)
     ax.set_title('Distribution of daily turnover rates')
     ax.set_xlabel('Turnover rate')
     return ax
@@ -1697,12 +1710,12 @@ def plot_monthly_returns_timeseries(returns, ax=None, **kwargs):
     """
 
     def cumulate_returns(x):
-        return ep.cum_returns(x)[-1]
+        return ep.cum_returns(x).iloc[-1]
 
     if ax is None:
         ax = plt.gca()
 
-    monthly_rets = returns.resample('M').apply(lambda x: cumulate_returns(x))
+    monthly_rets = returns.resample('ME').apply(lambda x: cumulate_returns(x))
     monthly_rets = monthly_rets.to_period()
 
     sns.barplot(x=monthly_rets.index,
@@ -1769,7 +1782,7 @@ def plot_round_trip_lifetimes(round_trips, disp_amount=16, lsize=18, ax=None):
                     [y_ix, y_ix], color=c,
                     linewidth=lsize, solid_capstyle='butt')
 
-    ax.set_yticks(range(disp_amount))
+    ax.set_yticks(range(len(sample)))
     ax.set_yticklabels([utils.format_asset(s) for s in sample])
 
     ax.set_ylim((-0.5, min(len(sample), disp_amount) - 0.5))

@@ -12,13 +12,8 @@ from pyfolio.perf_attrib import (
 
 
 def _empyrical_compat_perf_attrib_result(index, columns, data):
-    if ep.__version__ < '0.5.2':
-        # Newer columns were added in empyrical v0.5.2. These exist in older
-        # and newer empyrical:
-        columns = ['risk_factor1', 'risk_factor2', 'common_returns',
-                   'specific_returns', 'total_returns']
-        data = {k: v for k, v in data.items() if k in columns}
-
+    # empyrical >= 0.5.2 (required by setup.py) always includes the
+    # tilt_returns and timing_returns columns.
     return pd.DataFrame(index=index, columns=columns, data=data)
 
 
@@ -152,11 +147,11 @@ class PerfAttribTestCase(unittest.TestCase):
                                                               factor_returns,
                                                               factor_loadings)
 
-        pd.util.testing.assert_frame_equal(expected_perf_attrib_output,
-                                           perf_attrib_output)
+        pd.testing.assert_frame_equal(expected_perf_attrib_output,
+                                      perf_attrib_output)
 
-        pd.util.testing.assert_frame_equal(expected_exposures_portfolio,
-                                           exposures_portfolio)
+        pd.testing.assert_frame_equal(expected_exposures_portfolio,
+                                      exposures_portfolio)
 
         # test long and short positions
         positions = pd.DataFrame(index=dts,
@@ -190,11 +185,11 @@ class PerfAttribTestCase(unittest.TestCase):
                   'risk_factor2': [0.0, 0.0]}
         )
 
-        pd.util.testing.assert_frame_equal(expected_perf_attrib_output,
-                                           perf_attrib_output)
+        pd.testing.assert_frame_equal(expected_perf_attrib_output,
+                                      perf_attrib_output)
 
-        pd.util.testing.assert_frame_equal(expected_exposures_portfolio,
-                                           exposures_portfolio)
+        pd.testing.assert_frame_equal(expected_exposures_portfolio,
+                                      exposures_portfolio)
 
         perf_attrib_summary, exposures_summary = create_perf_attrib_stats(
             perf_attrib_output, exposures_portfolio
@@ -206,7 +201,7 @@ class PerfAttribTestCase(unittest.TestCase):
         self.assertEqual(perf_attrib_summary['Cumulative Specific Return'],
                          perf_attrib_summary['Total Returns'])
 
-        pd.util.testing.assert_frame_equal(
+        pd.testing.assert_frame_equal(
             exposures_summary,
             pd.DataFrame(0.0, index=['risk_factor1', 'risk_factor2'],
                          columns=['Average Risk Factor Exposure',
@@ -224,7 +219,7 @@ class PerfAttribTestCase(unittest.TestCase):
 
         returns = pd.read_csv('pyfolio/tests/test_data/returns.csv',
                               index_col=0, parse_dates=True,
-                              header=None, squeeze=True)
+                              header=None).squeeze('columns')
 
         factor_loadings = pd.read_csv(
             'pyfolio/tests/test_data/factor_loadings.csv',
@@ -242,7 +237,8 @@ class PerfAttribTestCase(unittest.TestCase):
         residuals.columns = [int(col) for col in residuals.columns]
 
         intercepts = pd.read_csv('pyfolio/tests/test_data/intercepts.csv',
-                                 index_col=0, header=None, squeeze=True)
+                                 index_col=0,
+                                 header=None).squeeze('columns')
 
         risk_exposures_portfolio, perf_attrib_output = perf_attrib(
             returns,
@@ -257,16 +253,16 @@ class PerfAttribTestCase(unittest.TestCase):
 
         # since all returns are factor returns, common returns should be
         # equivalent to total returns, and specific returns should be 0
-        pd.util.testing.assert_series_equal(returns,
-                                            common_returns,
-                                            check_names=False)
+        pd.testing.assert_series_equal(returns,
+                                       common_returns,
+                                       check_names=False)
 
         self.assertTrue(np.isclose(specific_returns, 0).all())
 
         # specific and common returns combined should equal total returns
-        pd.util.testing.assert_series_equal(returns,
-                                            combined_returns,
-                                            check_names=False)
+        pd.testing.assert_series_equal(returns,
+                                       combined_returns,
+                                       check_names=False)
 
         # check that residuals + intercepts = specific returns
         self.assertTrue(np.isclose((residuals + intercepts), 0).all())
@@ -276,13 +272,13 @@ class PerfAttribTestCase(unittest.TestCase):
             factor_returns, axis='rows'
         ).sum(axis='columns')
 
-        pd.util.testing.assert_series_equal(expected_common_returns,
-                                            common_returns,
-                                            check_names=False)
+        pd.testing.assert_series_equal(expected_common_returns,
+                                       common_returns,
+                                       check_names=False)
 
         # since factor loadings are ones, portfolio risk exposures
         # should be ones
-        pd.util.testing.assert_frame_equal(
+        pd.testing.assert_frame_equal(
             risk_exposures_portfolio,
             pd.DataFrame(np.ones_like(risk_exposures_portfolio),
                          index=risk_exposures_portfolio.index,
@@ -317,7 +313,7 @@ class PerfAttribTestCase(unittest.TestCase):
         avg_factor_exposure = risk_exposures_portfolio.mean().rename(
             'Average Risk Factor Exposure'
         )
-        pd.util.testing.assert_series_equal(
+        pd.testing.assert_series_equal(
             avg_factor_exposure,
             exposures_summary['Average Risk Factor Exposure']
         )
@@ -329,7 +325,7 @@ class PerfAttribTestCase(unittest.TestCase):
             index=risk_exposures_portfolio.columns
         )
 
-        pd.util.testing.assert_series_equal(
+        pd.testing.assert_series_equal(
             cumulative_returns_by_factor,
             exposures_summary['Cumulative Return']
         )
@@ -341,7 +337,7 @@ class PerfAttribTestCase(unittest.TestCase):
             index=risk_exposures_portfolio.columns
         )
 
-        pd.util.testing.assert_series_equal(
+        pd.testing.assert_series_equal(
             annualized_returns_by_factor,
             exposures_summary['Annualized Return']
         )
@@ -431,8 +427,8 @@ class PerfAttribTestCase(unittest.TestCase):
                 ['AAPL', 'TLT', 'XOM'], level='ticker'
             )
 
-            with self.assertRaisesRegexp(ValueError,
-                                         "No factor loadings were available"):
+            with self.assertRaisesRegex(ValueError,
+                                        "No factor loadings were available"):
 
                 exposures, perf_attrib_data =\
                     perf_attrib(returns,
@@ -479,14 +475,14 @@ class PerfAttribTestCase(unittest.TestCase):
 
         expected_returns = pd.Series([0.1, 0.21, 0.331],
                                      index=returns.index)
-        pd.util.testing.assert_series_equal(
+        pd.testing.assert_series_equal(
             expected_returns,
             _cumulative_returns_less_costs(returns, None)
         )
 
         expected_returns = pd.Series([0.099000, 0.207801, 0.327373],
                                      index=returns.index)
-        pd.util.testing.assert_series_equal(
+        pd.testing.assert_series_equal(
             expected_returns,
             _cumulative_returns_less_costs(returns, cost)
         )
