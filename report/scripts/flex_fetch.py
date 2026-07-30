@@ -66,15 +66,23 @@ def main():
     statement_url = root.findtext('Url')
 
     statement = None
-    for _ in range(24):  # statements can take a minute to generate
+    for attempt in range(60):  # long statements can take minutes to generate
         candidate = http_get(statement_url,
                              {'q': reference, 't': token, 'v': '3'})
         if '<FlexQueryResponse' in candidate:
             statement = candidate
             break
-        time.sleep(5)
+        error = ET.fromstring(candidate)
+        code = error.findtext('ErrorCode')
+        if code != '1019':  # anything but "generation in progress" is fatal
+            sys.exit('Flex error {}: {}'.format(
+                code, error.findtext('ErrorMessage')))
+        if attempt % 6 == 5:
+            print('still waiting ({}s)...'.format((attempt + 1) * 10),
+                  flush=True)
+        time.sleep(10)
     if statement is None:
-        sys.exit('Statement was not ready after 120s; re-run to retry.')
+        sys.exit('Statement was not ready after 600s; re-run to retry.')
 
     with open(OUT_PATH, 'w') as f:
         f.write(statement)

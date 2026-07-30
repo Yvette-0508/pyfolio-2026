@@ -887,7 +887,14 @@ def plot_rolling_beta(returns, factor_returns, legend_loc='best',
     ax.legend(['6-mo',
                '12-mo'],
               loc=legend_loc, frameon=True, framealpha=0.5)
-    ax.set_ylim((-1.0, 1.0))
+
+    # Default view spans (-1, 1) but widen so high-beta (e.g. leveraged)
+    # series stay visible instead of being clipped out of the axes.
+    betas = pd.concat([rb_1, rb_2]).dropna()
+    lo = min(-1.0, betas.min()) if len(betas) else -1.0
+    hi = max(1.0, betas.max()) if len(betas) else 1.0
+    pad = 0.05 * (hi - lo)
+    ax.set_ylim((lo - pad, hi + pad))
     return ax
 
 

@@ -19,10 +19,11 @@ report/
 │   └── ibkr_tear_sheet.png pyfolio tear sheet
 └── scripts/   analysis scripts (committed)
     ├── ibkr_accurate.py    returns two ways: IBKR TWR vs NAV-with-flows
-    ├── ibkr_tear_sheet.py  pyfolio returns tear sheet -> PNG
+    ├── ibkr_tear_sheet.py  pyfolio returns tear sheet (vs SPY) -> PNG
     ├── ibkr_alpha_beta.py  alpha/beta split vs SPY, QQQ, SMH
     ├── flex_fetch.py       download a Flex statement from IBKR
     ├── flex_to_pyfolio.py  Flex XML -> returns/transactions CSVs
+    ├── gen_report.py       rebuild the HTML report from the Flex data
     └── render_pdf.sh       HTML report -> PDF via headless Chrome
 ```
 
@@ -46,15 +47,16 @@ Then `python flex_fetch.py && python flex_to_pyfolio.py` produces
 
 ## Refreshing
 
-The IBKR data comes through the Claude IBKR connector (Portfolio Analyst
-performance, positions, trades, benchmark price history) — ask Claude to
-refresh `data/ibkr_returns.csv` and the benchmark closes, then:
+Benchmark closes (`data/benchmark_closes.csv`: date, SPY, QQQ, SMH) come
+through the Claude IBKR connector — ask Claude to refresh them. Then:
 
 ```sh
 cd report/scripts
-PYTHONPATH=../.. python ibkr_accurate.py     # verify returns
-PYTHONPATH=../.. python ibkr_tear_sheet.py   # regenerate tear sheet
+python flex_fetch.py                         # download the statement
+python flex_to_pyfolio.py                    # -> returns/transactions CSVs
+PYTHONPATH=../.. python ibkr_tear_sheet.py   # tear sheet PNG (vs SPY)
 PYTHONPATH=../.. python ibkr_alpha_beta.py   # benchmark split
+PYTHONPATH=../.. python gen_report.py        # rebuild the HTML report
 ./render_pdf.sh                              # export PDF
 ```
 
