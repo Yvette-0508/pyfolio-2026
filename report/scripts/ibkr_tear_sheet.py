@@ -6,10 +6,10 @@ Writes ../output/ibkr_tear_sheet.png
 import os
 
 import matplotlib
-matplotlib.use('Agg')
-
 import pandas as pd
 import pyfolio as pf
+
+matplotlib.use('Agg')
 
 REPORT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

@@ -29,7 +29,8 @@ df = pd.read_csv(os.path.join(REPORT, 'data', 'ibkr_returns.csv'),
 df.index = df.index.tz_localize('UTC')
 portfolio = (1 + df.cum_return).pct_change().fillna(df.cum_return.iloc[0])
 
-print(f"{'benchmark':<10}{'period return':>15}{'beta':>10}{'alpha (ann.)':>14}")
+print(f"{'benchmark':<10}{'period return':>15}"
+      f"{'beta':>10}{'alpha (ann.)':>14}")
 rows = {}
 for sym, closes in CLOSES.items():
     px = pd.Series(closes)

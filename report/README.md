@@ -21,8 +21,28 @@ report/
     ├── ibkr_accurate.py    returns two ways: IBKR TWR vs NAV-with-flows
     ├── ibkr_tear_sheet.py  pyfolio returns tear sheet -> PNG
     ├── ibkr_alpha_beta.py  alpha/beta split vs SPY, QQQ, SMH
+    ├── flex_fetch.py       download a Flex statement from IBKR
+    ├── flex_to_pyfolio.py  Flex XML -> returns/transactions CSVs
     └── render_pdf.sh       HTML report -> PDF via headless Chrome
 ```
+
+## Flex Web Service setup (one time)
+
+1. In IBKR Client Portal: **Performance & Reports → Flex Queries** →
+   create an **Activity Flex Query** for the account. Include at least
+   *Net Asset Value (NAV) in Base*, *Cash Transactions*, *Trades*, and
+   *Open Positions*; date period "Last 365 Calendar Days".
+2. **Reports → Settings → Flex Web Service** → enable, generate a token.
+3. Save both in `data/flex_credentials` (gitignored):
+
+   ```
+   TOKEN=<flex web service token>
+   QUERY_ID=<activity query id>
+   ```
+
+Then `python flex_fetch.py && python flex_to_pyfolio.py` produces
+`data/flex_returns.csv` (true TWR daily returns, flow-adjusted) and
+`data/flex_transactions.csv` ready for pyfolio.
 
 ## Refreshing
 
