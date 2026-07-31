@@ -13,6 +13,7 @@ import json
 import os
 import re
 import xml.etree.ElementTree as ET
+from html import escape
 
 import pandas as pd
 import empyrical as ep
@@ -229,6 +230,61 @@ stats_html = '''
     sk=S['Skew'], ku=S['Kurtosis'], ta=S['Tail ratio'],
     be=ab['SPY'][1], al=pct(ab['SPY'][2], 1, sign=True))
 
+# ------------------------------------------------------ position book
+pos_rows = []
+for p in pos:
+    pos_rows.append(dict(
+        sym=p.get('symbol') or '', desc=p.get('description') or '',
+        qty=float(p.get('position') or 0), mark=float(p.get('markPrice') or 0),
+        val=float(p.get('positionValue') or 0),
+        cost=float(p.get('costBasisMoney') or 0),
+        upnl=float(p.get('fifoPnlUnrealized') or 0)))
+pos_rows.sort(key=lambda r: -abs(r['val']))
+pos_date = max(p.get('reportDate') or '' for p in pos)
+pos_date = '{}-{}-{}'.format(pos_date[:4], pos_date[4:6], pos_date[6:])
+
+def qty_fmt(q):
+    return '{:,.0f}'.format(q) if q == int(q) else '{:,.4f}'.format(q).rstrip('0')
+
+def signed_usd(v):
+    return ('−' if v < 0 else '+') + usd(abs(v))
+
+def pnl_frac(r):
+    return r['upnl'] / abs(r['cost']) if r['cost'] else 0.0
+
+pos_trs = []
+for r in pos_rows:
+    desc = r['desc'] if len(r['desc']) <= 28 else r['desc'][:27] + '…'
+    pos_trs.append(
+        '          <tr><td>{}</td><td class="posdesc">{}</td><td>{}</td>'
+        '<td>{:,.2f}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>'.format(
+            escape(r['sym']), escape(desc), qty_fmt(r['qty']), r['mark'],
+            ('−' if r['val'] < 0 else '') + usd(abs(r['val'])),
+            pct(r['val'] / end_nav, 1), signed_usd(r['upnl']),
+            pct(pnl_frac(r), 0, sign=True)))
+
+top10_w = sum(abs(r['val']) for r in pos_rows[:10]) / end_nav
+dust = [r for r in pos_rows if abs(r['val']) < 0.005 * end_nav]
+dust_v = sum(abs(r['val']) for r in dust)
+LEV_ETFS = {'NVDL', 'TQQQ', 'SQQQ', 'QLD', 'SOXL', 'SOXS', 'AMDL', 'AAPU',
+            'MUU', 'DLLL', 'OKLL', 'TSLL', 'NVDU', 'USD'}
+lev = [r for r in pos_rows if r['sym'] in LEV_ETFS]
+lev_v = sum(abs(r['val']) for r in lev)
+THEME = {'VST', 'OKLO', 'SMR', 'LEU', 'NEE', 'MNVT'}
+theme = [r for r in pos_rows if r['sym'] in THEME]
+theme_v = sum(abs(r['val']) for r in theme)
+losers = [r for r in pos_rows
+          if abs(r['val']) > 0.02 * end_nav and pnl_frac(r) < -0.20]
+winners = sorted((r for r in pos_rows
+                  if abs(r['val']) > 0.015 * end_nav and pnl_frac(r) > 0.25),
+                 key=lambda r: -r['upnl'])
+topname = pos_rows[0]
+loser_list = ', '.join('{} ({} of NAV, {})'.format(
+    r['sym'], pct(abs(r['val']) / end_nav, 1), pct(pnl_frac(r), 0, sign=True))
+    for r in losers)
+win_list = ', '.join('{} ({})'.format(r['sym'], pct(pnl_frac(r), 0, sign=True))
+                     for r in winners[:6])
+
 # -------------------------------------------------------------- html
 old = open(OUT).read()
 css = old[old.index('<style>'):old.index('</style>') + len('</style>')]
@@ -240,6 +296,12 @@ css = css.replace('.card, .fact, details { break-inside: avoid; }',
                   '.card, .fact { break-inside: avoid; }')
 css = css.replace('details img { break-inside: auto; }',
                   'details img { break-inside: avoid; }')
+if '.postable' not in css:
+    css = css.replace('</style>', '''  .postable { font-size: 12.5px; }
+  .postable .posdesc { color: var(--ink-2); }
+  .review { margin: 0; padding-left: 18px; }
+  .review li { margin: 7px 0; max-width: 80ch; font-size: 13.5px; }
+</style>''')
 
 html = '''<title>IBKR Account · pyfolio Results</title>
 ''' + css + '''
@@ -249,7 +311,7 @@ html = '''<title>IBKR Account · pyfolio Results</title>
     <p class="eyebrow">Interactive Brokers · Flex Web Service · @@ACCT@@ · Base currency USD</p>
     <h1>Account performance — full-year Flex statement</h1>
     <p class="subtitle">Daily NAV, cash flows and trades from the official IBKR Activity Flex
-    statement, fetched July 30, 2026. Statement period: July 30, 2025 &rarr; July 29, 2026.
+    statement, fetched July 31, 2026. Statement period: July 31, 2025 &rarr; July 30, 2026.
     Returns are time-weighted: every deposit and withdrawal is stripped out before compounding.</p>
   </header>
 
@@ -270,7 +332,7 @@ html = '''<title>IBKR Account · pyfolio Results</title>
       <span class="num mono">@@TWR@@</span>
       <span class="meta">In dollars the year nets to <b>@@PNL@@</b> of trading P&amp;L on
       @@NETDEP@@ of net contributions &mdash; the strong early run compounded on a small base,
-      and the account is currently <b>@@DDNOW@@</b> below its late-June peak.</span>
+      and the account is currently <b>@@DDNOW@@</b> below its early-June peak.</span>
     </div>
   </section>
 
@@ -280,7 +342,7 @@ html = '''<title>IBKR Account · pyfolio Results</title>
     NAV peaked at @@NAVPEAK@@ on June 2, 2026.</p>
     <div class="chart-wrap" id="chartwrap">
       <svg viewBox="0 0 800 276" width="100%" role="img"
-           aria-label="Line chart of account NAV from July 2025 to July 2026, rising from about $4,000 to a peak of $127,000 in early June 2026, then falling to about $70,000">
+           aria-label="Line chart of account NAV from July 2025 to July 2026, rising from about $4,000 to a peak of $127,000 in early June 2026, then falling to about $83,000">
         @@NAVGRID@@
         @@NAVTICKS@@
         <path class="navline" d="@@NAVPATH@@"></path>
@@ -295,7 +357,7 @@ html = '''<title>IBKR Account · pyfolio Results</title>
   <section class="card">
     <h2>Benchmark comparison — SPY, QQQ, SMH</h2>
     <p class="note">Cumulative return from the July 31, 2025 close, IBKR daily closes through
-    July 29, 2026 (price-only: benchmark dividends are not reinvested, which flatters the
+    July 30, 2026 (price-only: benchmark dividends are not reinvested, which flatters the
     portfolio by roughly 1% against SPY).</p>
     <div class="legend">
       <span class="chip"><span class="sw" style="background:var(--series-nav)"></span>Portfolio</span>
@@ -305,7 +367,7 @@ html = '''<title>IBKR Account · pyfolio Results</title>
     </div>
     <div class="chart-wrap" id="benchwrap">
       <svg viewBox="0 0 800 276" width="100%" role="img"
-           aria-label="Line chart comparing cumulative returns July 2025 to July 2026: portfolio up 39.5% with a peak near 175%, SMH up 74.6%, QQQ up 17.1%, SPY up 15.4%">
+           aria-label="Line chart comparing cumulative returns July 2025 to July 2026: portfolio up 66.5% with a peak near 176%, SMH up 86.6%, QQQ up 21.0%, SPY up 17.3%">
         @@BENCHGRID@@
         @@BENCHPATHS@@
         @@BENCHENDS@@
@@ -318,7 +380,7 @@ html = '''<title>IBKR Account · pyfolio Results</title>
 
     <p class="note" style="margin-top:18px">Beta is the regression slope of daily portfolio
     returns on each benchmark; alpha is the annualized excess after removing
-    <i>beta &times; benchmark</i>. A beta of @@BETASPY@@ on SPY with only 1.61 on SMH says the
+    <i>beta &times; benchmark</i>. A beta of @@BETASPY@@ on SPY with only @@BETASMH@@ on SMH says the
     account behaves like leveraged semiconductor exposure &mdash; consistent with @@GROSS@@ of
     positions on @@NETLIQ@@ of equity (@@LEV@@&times; gross leverage).</p>
     <div style="overflow-x:auto">
@@ -336,7 +398,7 @@ html = '''<title>IBKR Account · pyfolio Results</title>
 
   <section class="card">
     <h2>Monthly returns</h2>
-    <p class="note">Portfolio months are flow-adjusted; July 2025 covers only the last three
+    <p class="note">Portfolio months are flow-adjusted; July 2025 covers only the last two
     sessions of the month. Benchmark columns start August 2025.</p>
     <div style="overflow-x:auto">
       <table class="mono">
@@ -354,10 +416,62 @@ html = '''<title>IBKR Account · pyfolio Results</title>
     <h2>pyfolio performance statistics</h2>
     <p class="note">Computed by <code>pyfolio.timeseries.perf_stats</code> on the full
     @@NDAYS@@-day series; alpha and beta are regressed against SPY on the @@NALIGN@@
-    aligned trading days. The 79% annual volatility and −49.5% max drawdown are the cost
+    aligned trading days. The @@AV@@ annual volatility and @@MAXDD@@ max drawdown are the cost
     of the leverage that produced the headline return.</p>
     <div class="stats">@@STATS@@
     </div>
+  </section>
+
+  <section class="card" style="break-inside:auto">
+    <h2>Position book — all @@NPOS@@ holdings</h2>
+    <p class="note">Every open position from the statement&rsquo;s <code>OpenPositions</code>
+    section as of @@POSDATE@@, sorted by market value. Gross book @@GROSS@@ on @@NETLIQ@@ of
+    equity (@@LEV@@&times; leverage); the top 10 names are @@TOP10NAV@@ of NAV, while @@NDUST@@
+    positions under 0.5% of NAV together hold just @@DUSTPCT@@ of gross.</p>
+    <div style="overflow-x:auto">
+      <table class="mono postable">
+        <thead>
+          <tr><th>Symbol</th><th>Description</th><th>Qty</th><th>Mark</th><th>Value</th><th>% NAV</th><th>Unrlzd P&amp;L</th><th>P&amp;L %</th></tr>
+        </thead>
+        <tbody>
+@@POSROWS@@
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Risk review — sizing suggestions</h2>
+    <p class="note">Rule-based read of the book above (reviewed July 30, 2026): single names over
+    8% of NAV, daily-reset leveraged products, correlated theme blocks, positions over 2% of NAV
+    marked &gt;20% below cost, and sub-0.5% dust. Quantitative observations, not investment
+    advice.</p>
+    <ul class="review">
+      <li><b>Single-name concentration.</b> @@TOPNAME@@ alone is @@TOPW@@ of NAV (@@TOPPNL@@ vs
+      cost). Trimming it toward 8&ndash;10% is the largest single risk reduction available in the
+      book.</li>
+      <li><b>Leverage on leverage.</b> @@NLEV@@ daily-reset leveraged ETFs (@@LEVLIST@@) hold
+      @@LEVV@@ on top of the portfolio&rsquo;s @@LEV@@&times; gross margin. These decay in a
+      high-volatility tape; the plain underlyings express the same view with less drag.</li>
+      <li><b>One thesis, many tickers.</b> The AI-power/nuclear cluster (@@THEMELIST@@) holds
+      @@THEMEV@@ &mdash; @@THEMEW@@ of NAV &mdash; largely below cost. Size the theme as a single
+      decision and consolidate to the highest-conviction one or two names.</li>
+      <li><b>Broken cost basis.</b> Positions over 2% of NAV marked more than 20% below cost:
+      @@LOSERLIST@@. Decide each deliberately rather than letting them sit.</li>
+      <li><b>Dust.</b> @@NDUST@@ positions under 0.5% of NAV (@@DUSTV@@ in total, @@DUSTAVG@@ on
+      average) cannot move performance in either direction; they only consume margin and
+      attention.</li>
+      <li><b>Add side.</b> While gross is @@LEV@@&times;, fund any adds from reductions. The
+      winners (@@WINLIST@@) already lean the right way; the genuine gap is defensive &mdash; SCHD
+      is the only low-beta holding in the book.</li>
+      <li><b>Sizing algorithm.</b> Mean&ndash;variance optimization is a poor fit here (@@NPOS@@
+      names on @@NDAYS@@ daily observations gives an unestimable covariance matrix, so the
+      optimizer chases noise), and Kelly-style sizing at @@AV@@ realized volatility is ruinous.
+      Better: portfolio-level volatility targeting (target 25&ndash;35% annualized; scale gross
+      exposure by target &divide; trailing 20&ndash;60-day realized vol) to set overall size, with
+      Hierarchical Risk Parity allocating within a book first consolidated to 30&ndash;40 names,
+      capped at ~5% per name and 20&ndash;25% per cluster, rebalanced monthly.</li>
+    </ul>
   </section>
 
   <details>
@@ -463,6 +577,8 @@ subs = {
     '@@BENCHTAGS@@': '\n        '.join(bench_tags),
     '@@BENCHXTICKS@@': '\n        '.join(bench_xticks),
     '@@BETASPY@@': '{:.2f}'.format(ab['SPY'][1]),
+    '@@BETASMH@@': '{:.2f}'.format(ab['SMH'][1]),
+    '@@MAXDD@@': pct(S['Max drawdown'], 1),
     '@@LEV@@': '{:.1f}'.format(gross / end_nav),
     '@@ABROWS@@': ab_rows,
     '@@PORTAL@@': pct(port_al_cum, 1, sign=True),
@@ -472,6 +588,25 @@ subs = {
     '@@NALIGN@@': str(len(common)),
     '@@NAVDAYS@@': json.dumps(nav_days),
     '@@BENCHDAYS@@': json.dumps(bench_days),
+    '@@POSROWS@@': '\n'.join(pos_trs),
+    '@@POSDATE@@': pos_date,
+    '@@TOP10NAV@@': pct(top10_w, 0),
+    '@@NDUST@@': str(len(dust)),
+    '@@DUSTPCT@@': pct(dust_v / gross, 0),
+    '@@DUSTV@@': usd(dust_v),
+    '@@DUSTAVG@@': usd(dust_v / max(len(dust), 1)),
+    '@@TOPNAME@@': escape(topname['sym']),
+    '@@TOPW@@': pct(abs(topname['val']) / end_nav, 1),
+    '@@TOPPNL@@': pct(pnl_frac(topname), 0, sign=True),
+    '@@NLEV@@': str(len(lev)),
+    '@@LEVLIST@@': ', '.join(escape(r['sym']) for r in lev),
+    '@@LEVV@@': usd(lev_v),
+    '@@THEMELIST@@': ', '.join(escape(r['sym']) for r in theme),
+    '@@THEMEV@@': usd(theme_v),
+    '@@THEMEW@@': pct(theme_v / end_nav, 0),
+    '@@LOSERLIST@@': loser_list,
+    '@@WINLIST@@': win_list,
+    '@@AV@@': pct(S['Annual volatility'], 0),
 }
 for k, v in subs.items():
     html = html.replace(k, v)
